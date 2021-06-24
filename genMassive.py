@@ -13,13 +13,18 @@ import glob
 
 PUBLIC = ['nangate45', 'sky130hd', 'sky130hs', 'asap7']
 
+# The number of generated config files into designs/{platform}/{design}/chunks/chuck{number} directory.
+NumFilesPerChunk = 50000
+
+## Orignal SDC file name
+OriginalSDC = 'constraint_doe.sdc'
 
 ##################################
 #  define input parameters
 ##################################
 
 # for generated .sh file name
-shellName = 'runMassive'
+ShellName = 'runMassive'
 
 ##################
 # Design
@@ -45,10 +50,15 @@ PLATFORM_DESIGN = [ \
     #'asap7-jpeg', \
     ]
 
+
 ## Target Clock Period (float)
 CLK_PERIOD = []
 
-
+## SDC uncertainty and IO delay.
+## TODO: Currently, it only support when 'set uncertainty' and 'set io_delay' 
+## are defined in the constraint.sdc file.
+UNCERTAINTY = []
+IO_DELAY = []
 
 
 ##################
@@ -61,6 +71,7 @@ ABC_CLOCK_PERIOD = []
 ## Hierarchical Synthsis. 0 = hierarchical, 1 = flatten, empty = flatten (default) (int)
 FLATTEN = []
 
+
 ##################
 # Floorplan
 ##################
@@ -71,7 +82,7 @@ FLATTEN = []
 CORE_UTIL = [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50]
 
 ## Aspect ratio. It REQUIRES 'CORE_UTIL' values (float)
-ASPECT_RATIO = [0.5, 0.75, 1.0]
+ASPECT_RATIO = [0.5, 0.75, 1.0, 1.25, 1.5]
 ## Core-to-die gap distance (um). It REQUIRES 'CORE_UTIL' values (int)
 CORE_DIE_MARGIN = [10]
 
@@ -88,9 +99,13 @@ GP_PAD = [4]
 ## Detailed Placement Padding for std cells (int)
 DP_PAD = [2]
 
+## Global Placement target bin density (select only one option) (.2 float)
+## option 1) PLACE_DENSITY uses the values in the list as it is.
+## option 2) PLACE_DENSITY_LB_ADDON adds the values in the list to the lower boundary of the PLACE_DENSITY
+## For eaxmple, PLACE_DENSITY_LB_ADDON = [0, 0.02, 0.04] means PLACE_DENSITY = [LB, LB+0.02, LB+0.04]
+## LB of the place density == (total instance area + padding) / total die area
 PLACE_DENSITY = []
-# PLACE_DENSITY by using LB (lower bound). e.g., LB, LB+0.1 -> [0, 0.1]
-PLACE_DENSITY_LB = [0, 0.04, 0.08]
+PLACE_DENSITY_LB_ADDON = [0, 0.04, 0.08]
 
 
 ##################
@@ -116,33 +131,40 @@ LAYER_ADJUST_M1 = [0, 0.2, 0.4, 0.6]
 LAYER_ADJUST_M2 = [0, 0.2, 0.4, 0.6]
 LAYER_ADJUST_M3 = [0, 0.2, 0.4, 0.6]
 LAYER_ADJUST_M4 = [0, 0.2, 0.4, 0.6]
-#LAYER_ADJUST_M1 = [0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27]
-#LAYER_ADJUST_M2 = [0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27]
-#LAYER_ADJUST_M3 = [0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27]
-#LAYER_ADJUST_M4 = [0, 0.03, 0.06, 0.09, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27]
 LAYER_ADJUST_M5 = []
 LAYER_ADJUST_M6 = []
 LAYER_ADJUST_M7 = []
 LAYER_ADJUST_M8 = []
 LAYER_ADJUST_M9 = []
 
+## Set global routing random seed. (int)
+GR_SEED = []
+
 ## Set allow global routing overflow. 0 = no, 1 = yes, empty = no (default) (int)
 # TODO: currently it does not work. Let this as 0 as it is.
 GR_OVERFLOW = [0]
 
+##################
+# Detailed Routing
+##################
+
+## Set global routing random seed. (int)
+DR_SEED = []
 
 SweepingAttributes = { "PLATFORM_DESIGN": PLATFORM_DESIGN,
     "CP": CLK_PERIOD, 
     "ABC_CP": ABC_CLOCK_PERIOD, 
     "FLATTEN": FLATTEN, 
-    "CORE_UTIL": CORE_UTIL, 
+    "UNCERTAINTY": UNCERTAINTY,
+    "IO_DELAY": IO_DELAY,
+    "UTIL": CORE_UTIL, 
     "AR": ASPECT_RATIO, 
-    "DIEtoCORE": CORE_DIE_MARGIN,
+    "GAP": CORE_DIE_MARGIN,
     "PINS_DISTANCE": PINS_DISTANCE,
     "GP_PAD": GP_PAD, 
     "DP_PAD": DP_PAD, 
-    "PLACE_DENSITY": PLACE_DENSITY, 
-    "PLACE_DENSITY_LB": PLACE_DENSITY_LB, 
+    "PD": PLACE_DENSITY, 
+    "PD_LB_ADD": PLACE_DENSITY_LB_ADDON, 
     "CTS_CLUSTER_SIZE": CTS_CLUSTER_SIZE, 
     "CTS_CLUSTER_DIAMETER": CTS_CLUSTER_DIAMETER, 
     "LAYER_ADJUST": LAYER_ADJUST, 
@@ -155,7 +177,9 @@ SweepingAttributes = { "PLATFORM_DESIGN": PLATFORM_DESIGN,
     "M7": LAYER_ADJUST_M7, 
     "M8": LAYER_ADJUST_M8, 
     "M9": LAYER_ADJUST_M9, 
-    "GR_OVERFLOW": GR_OVERFLOW }
+    "GR_SEED": GR_SEED,
+    "GR_OVERFLOW": GR_OVERFLOW,
+    "DR_SEED": DR_SEED }
 
 def assignEmptyAttrs(dicts):
   knobs = {}
@@ -194,6 +218,7 @@ def writeDoeLog(dicts, ProductDicts):
   for knobSet in knobValuesList:
     fo.write(str(knobSet)+'\n')
 
+
   fo.close()
 
 def productDict(dicts):
@@ -201,44 +226,48 @@ def productDict(dicts):
 
 def adjustFastRoute(filedata, adjSet, GrOverflow):
   if adjSet[0]!='empty':
-    filedata = re.sub("(set_global_routing_layer_adjustment .* )[0-9\.]+", "\g<1>{:.2f}".format(float(adjSet[0])), filedata)
+    filedata = re.sub("(set_global_routing_layer_adjustment .* )[0-9\.]+", "\g<1>{:.1f}".format(float(adjSet[0])), filedata)
   sep_la_cmds = ""
   for i, sep_la in enumerate(adjSet):
     if i==0 or sep_la=='empty':
       continue
+    ## TODO: Currently, only supports for SKY130HD and SKY130HS.
     ## TODO: user should manually change the layer name to match techLEF.
     layer_name = 'met%s'%i
-    sep_la_cmds += "set_global_routing_layer_adjustment " + layer_name + " {:.2f}\n".format(float(sep_la))
+    sep_la_cmds += "set_global_routing_layer_adjustment " + layer_name + " {:.1f}\n".format(float(sep_la))
   filedata = re.sub("set_global_routing_layer_adjustment.*\n", "\g<0>"+sep_la_cmds, filedata)
   if int(GrOverflow) == 1:
       filedata = re.sub("(global_route.*(\n\s+.*)*)", "\g<1> \\\n             -allow_overflow", filedata)
 
   return(filedata)
 
-def setPlaceDensity(DESIGN, Util, GpPad):
-  if DESIGN == "ibex":
-      LB = (Util/100) + (GpPad * (0.4*(Util/100)-0.01))+0.01
-  elif DESIGN == "aes":
-      LB = (Util/100) + (GpPad * (0.5*(Util/100)-0.005))+0.02
-  else:
-      LB = (Util/100) + (GpPad * (0.4*(Util/100)-0.01))+0.01
-  return LB
+#def setPlaceDensity(DESIGN, Util, GpPad):
+#  if DESIGN == "ibex":
+#      LB = (Util/100) + (GpPad * (0.4*(Util/100)-0.01))+0.01
+#  elif DESIGN == "aes":
+#      LB = (Util/100) + (GpPad * (0.5*(Util/100)-0.005))+0.02
+#  else:
+#      LB = (Util/100) + (GpPad * (0.4*(Util/100)-0.01))+0.01
+#  return LB
 
   
+  
 
-def writeConfigs(CurAttrs):
+def writeConfigs(CurAttrs, CurChunkNum):
   CurPlatform, CurDesign = CurAttrs.get('PLATFORM_DESIGN').split('-')
   CurClkPeriod = CurAttrs.get('CP')
   CurAbcClkPeriod = CurAttrs.get('ABC_CP')
   CurFlatten = CurAttrs.get('FLATTEN')
-  CurCoreUtil = CurAttrs.get('CORE_UTIL')
+  CurUncertainty = CurAttrs.get('UNCERTAINTY')
+  CurIoDelay = CurAttrs.get('IO_DELAY')
+  CurCoreUtil = CurAttrs.get('UTIL')
   CurAspectRatio = CurAttrs.get('AR')
-  CurCoreDieMargin = CurAttrs.get('DIEtoCORE')
+  CurCoreDieMargin = CurAttrs.get('GAP')
   CurPinsDistance = CurAttrs.get('PINS_DISTANCE')
   CurGpPad = CurAttrs.get('GP_PAD')
   CurDpPad = CurAttrs.get('DP_PAD')
-  CurPlaceDensity = CurAttrs.get('PLACE_DENSITY')
-  CurPlaceDensityLB = CurAttrs.get('PLACE_DENSITY_LB')
+  CurPlaceDensity = CurAttrs.get('PD')
+  CurPlaceDensityLbAddon = CurAttrs.get('PD_LB_ADD')
   CurCtsClusterSize = CurAttrs.get('CTS_CLUSTER_SIZE')
   CurCtsClusterDiameter = CurAttrs.get('CTS_CLUSTER_DIAMETER')
   CurLayerAdjust = CurAttrs.get('LAYER_ADJUST')
@@ -251,10 +280,22 @@ def writeConfigs(CurAttrs):
   CurLayerAdjustM7 = CurAttrs.get('M7')
   CurLayerAdjustM8 = CurAttrs.get('M8')
   CurLayerAdjustM9 = CurAttrs.get('M9')
+  CurGrSeed = CurAttrs.get('GR_SEED')
   CurGrOverflow = CurAttrs.get('GR_OVERFLOW')
+  CurDrSeed = CurAttrs.get('DR_SEED')
 
-  if makeArg=='clean':
-    fileList = glob.glob('./designs/%s/%s/*-DoE-*'%(CurPlatform,CurDesign))
+
+  if not os.path.isdir('./designs/%s/%s/chunks'%(CurPlatform,CurDesign)):
+    os.mkdir('./designs/%s/%s/chunks'%(CurPlatform,CurDesign))
+  CurDesignDir = './designs/%s/%s'%(CurPlatform,CurDesign)
+  CurChunkDir = './designs/%s/%s/chunks/chunk%s'%(CurPlatform,CurDesign,CurChunkNum)
+
+  if not os.path.isdir(CurChunkDir):
+    os.mkdir(CurChunkDir)
+  print(CurChunkNum)
+
+  if MakeArg=='clean':
+    fileList = glob.glob('%s/*-DoE-*'%(CurChunkDir))
     if fileList is not None:
       for file in fileList:
         os.remove(file)
@@ -278,22 +319,28 @@ def writeConfigs(CurAttrs):
   #fileName = 'config-%s-%s-'%(CurPlatform, CurDesign)+variantName + '.mk'
   fileName = 'config-DoE-'+variantName + '.mk'
 
-  fo = open('./designs/%s/%s/%s'%(CurPlatform,CurDesign,fileName), 'w')
+  fo = open('%s/%s'%(CurChunkDir,fileName), 'w')
 
-  fo.write('include $(dir $(DESIGN_CONFIG))/config.mk\n')
+  fo.write('include $(realpath $(dir $(DESIGN_CONFIG))../../)/config.mk\n')
   fo.write('\n')
   fo.write('FLOW_VARIANT = %s\n'%(variantName))
   fo.write('\n')
 
-  if CurClkPeriod != 'empty':
-    fOrigSdc = open('./designs/%s/%s/constraint.sdc'%(CurPlatform,CurDesign),'r')
+  if CurClkPeriod != 'empty' or CurUncertainty != 'empty' or CurIoDelay != 'empty':
+    fOrigSdc = open('%s/%s'%(CurDesignDir,OriginalSDC),'r')
     filedata = fOrigSdc.read()
     fOrigSdc.close()
-    filedata = re.sub("-period [0-9\.]+", "-period " + str(CurClkPeriod), filedata)
-    #filedata = re.sub("-waveform [{}\s0-9\.]+$}", "\n", filedata)
-    filedata = re.sub("-waveform [{}\s0-9\.]+[\s|\n]", "", filedata)
+    if CurClkPeriod != 'empty':
+      filedata = re.sub("-period [0-9\.]+", "-period " + str(CurClkPeriod), filedata)
+      #filedata = re.sub("-waveform [{}\s0-9\.]+$}", "\n", filedata)
+      filedata = re.sub("-waveform [{}\s0-9\.]+[\s|\n]", "", filedata)
+    if CurUncertainty != 'empty':
+      filedata = re.sub("set uncertainty [0-9\.]+", "set uncertainty " + str(CurUncertainty), filedata)
+    if CurIoDelay != 'empty':
+      filedata = re.sub("set io_delay [0-9\.]+", "set io_delay " + str(CurIoDelay), filedata)
+
     #fOutSdc = open('./designs/%s/%s/constraint-%s-%s-'%(CurPlatform,CurDesign,CurPlatform,CurDesign)+variantName+'.sdc','w')
-    fOutSdc = open('./designs/%s/%s/constraint-DoE-'%(CurPlatform,CurDesign)+variantName+'.sdc','w')
+    fOutSdc = open('%s/constraint-DoE-'%(CurChunkDir)+variantName+'.sdc','w')
     fOutSdc.write(filedata)
     fOutSdc.close()
     fo.write('export SDC_FILE = $(dir $(DESIGN_CONFIG))/constraint-DoE-%s.sdc\n'%variantName)
@@ -302,26 +349,20 @@ def writeConfigs(CurAttrs):
     fo.write('export ABC_CLOCK_PERIOD_IN_PS = %s\n'%CurAbcClkPeriod)
   if CurFlatten != 'empty':
     if CurFlatten == 0:
-      fo.write('export SYNTH_ARGS = hier\n')
+      fo.write('export SYNTH_ARGS = \n')
 
   if CurCoreUtil != 'empty':
     fo.write('export CORE_UTILIZATION = %s\n'%CurCoreUtil)
-    if CurPlaceDensity == 'empty':
-      LB = setPlaceDensity(CurDesign, CurCoreUtil, CurGpPad) + CurPlaceDensityLB
-      if LB > 1.00:
-        fo.close()
-        os.remove('./designs/%s/%s/%s'%(CurPlatform,CurDesign,fileName))
-        return
-        LB = 1.00
-      fo.write('export PLACE_DENSITY = %.2f\n'%LB)
   if CurPlaceDensity != 'empty':
     fo.write('export PLACE_DENSITY = %.2f\n'%CurPlaceDensity)
+  if CurPlaceDensityLbAddon != 'empty':
+    fo.write('export PLACE_DENSITY_LB_ADDON = %.2f\n'%CurPlaceDensityLbAddon)
   if CurAspectRatio != 'empty':
     fo.write('export CORE_ASPECT_RATIO = %s\n'%CurAspectRatio)
   if CurCoreDieMargin != 'empty':
     fo.write('export CORE_MARGIN = %s\n'%CurCoreDieMargin)
   if CurPinsDistance != 'empty':
-    fo.write('export IO_PLACEMENT_MIN_DIST = %s\n'%CurPinsDistance)
+    fo.write('export PLACE_PINS_ARGS = -min_distance %s\n'%CurPinsDistance)
   if CurGpPad != 'empty':
     fo.write('export CELL_PAD_IN_SITES_GLOBAL_PLACEMENT = %s\n'%CurGpPad)
   if CurDpPad != 'empty':
@@ -331,6 +372,9 @@ def writeConfigs(CurAttrs):
     fo.write('export CTS_CLUSTER_SIZE = %s\n'%CurCtsClusterSize)
   if CurCtsClusterDiameter != 'empty':
     fo.write('export CTS_CLUSTER_DIAMETER = %s\n'%CurCtsClusterDiameter)
+  if CurDrSeed != 'empty':
+    fo.write('export OR_K = 1.0\n')
+    fo.write('export OR_SEED = %s\n'%CurDrSeed)
   if CurLayerAdjust != 'empty' or \
   CurLayerAdjustM1 != 'empty' or \
   CurLayerAdjustM2 != 'empty' or \
@@ -340,7 +384,8 @@ def writeConfigs(CurAttrs):
   CurLayerAdjustM6 != 'empty' or \
   CurLayerAdjustM7 != 'empty' or \
   CurLayerAdjustM8 != 'empty' or \
-  CurLayerAdjustM9 != 'empty':
+  CurLayerAdjustM9 != 'empty' or \
+  CurGrSeed != 'empty':
     fo.write('export FASTROUTE_TCL = $(dir $(DESIGN_CONFIG))/fastroute-DoE-%s.tcl'%variantName)
 
     if CurPlatform in PUBLIC:
@@ -365,33 +410,50 @@ def writeConfigs(CurAttrs):
         CurLayerAdjustM9 ]
     filedata = adjustFastRoute(filedata, CurLayerAdjustSet, CurGrOverflow) 
     FrName = 'fastroute-DoE-'+variantName+'.tcl'
-    fOutFr = open('./designs/%s/%s/%s'%(CurPlatform,CurDesign,FrName),'w')
+    fOutFr = open('%s/%s'%(CurChunkDir,FrName),'w')
     fOutFr.write(filedata)
+    if CurGrSeed != 'empty':
+      fOutFr.write('set_global_routing_random -seed %s'%CurGrSeed)
     fOutFr.close()
 
   fo.close()
 
-  frun = open('./%s.sh'%shellName, 'a')
-
-  runName = 'DESIGN_CONFIG=./designs/%s/%s/%s make\n'%(CurPlatform,CurDesign,fileName)
-  frun.write(runName)
+  frun = open('./%s.sh'%ShellName, 'a')
+  RunName = 'DESIGN_CONFIG=%s/%s make\n'%(CurChunkDir,fileName)
+  frun.write(RunName)
   frun.close()
+  
+  
+  fcollect = open('./%s_metrics_collect.sh'%ShellName, 'a')
+  CollectName = 'python util/genMetrics.py -x -p %s -d %s -v %s -o metrics_%s/%s.json\n'%(CurPlatform, CurDesign, variantName, ShellName, variantName)
+  fcollect.write(CollectName)
+  fcollect.close()
 
 
 
 
   
-makeArg = sys.argv[1]
+MakeArg = sys.argv[1]
 
 
+if not os.path.isdir('./metrics_%s'%ShellName):
+  os.mkdir('./metrics_%s'%ShellName)
 
 knobs = assignEmptyAttrs(SweepingAttributes)
 ProductAttrs = list(productDict(knobs))
 writeDoeLog(SweepingAttributes, ProductAttrs)
-if os.path.isfile('./%s.sh'%shellName):
-  os.remove('./%s.sh'%shellName)
-for CurAttrs in ProductAttrs:
-  writeConfigs(CurAttrs)
+if os.path.isfile('./%s.sh'%ShellName):
+  os.remove('./%s.sh'%ShellName)
+if os.path.isfile('./%s_metrics_collect.sh'%ShellName):
+  os.remove('./%s_metrics_collect.sh'%ShellName)
+CurChunkNum = 0
+for i, CurAttrs in enumerate(ProductAttrs, 1):
+  if i % NumFilesPerChunk == 0:
+    writeConfigs(CurAttrs, CurChunkNum)
+    CurChunkNum = CurChunkNum+1
+  else:
+    writeConfigs(CurAttrs, CurChunkNum)
+
 
 # with open('file.txt') as data:
 #    line = data.readlines()
